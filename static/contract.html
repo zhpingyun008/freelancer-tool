@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 合同生成 - 自由职业者工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="logo">✍ 自由职业者工具</a>
+            <div class="nav-links">
+                <a href="/generate-contract">生成合同</a>
+                <a href="/generate-quote">生成报价</a>
+                <a href="/docs" target="_blank">API文档</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="page-main">
+        <div class="container">
+            <h1>📄 AI 合同生成器</h1>
+            <p class="page-desc">输入基本信息，AI 将为你生成专业的中文合同文本。</p>
+
+            <div class="form-layout">
+                <div class="form-card">
+                    <form id="contractForm">
+                        <div class="form-group">
+                            <label for="contract_type">合同类型 *</label>
+                            <select id="contract_type" required>
+                                <option value="">请选择合同类型</option>
+                                <option value="服务合同">服务合同</option>
+                                <option value="劳务合同">劳务合同</option>
+                                <option value="技术开发合同">技术开发合同</option>
+                                <option value="设计委托合同">设计委托合同</option>
+                                <option value="咨询顾问合同">咨询顾问合同</option>
+                                <option value="合作协议">合作协议</option>
+                                <option value="保密协议（NDA）">保密协议（NDA）</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="party_a">甲方（委托方）*</label>
+                            <input type="text" id="party_a" placeholder="公司名称或个人姓名" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="party_b">乙方（承接方）*</label>
+                            <input type="text" id="party_b" placeholder="公司名称或个人姓名" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="terms">附加条款和要求</label>
+                            <textarea id="terms" rows="4" placeholder="例如：项目周期、付款方式、知识产权归属、保密条款等特殊要求..."></textarea>
+                        </div>
+
+                        <div class="usage-info" id="usageInfo">
+                            <span>本月已使用: <strong id="usageCount">0</strong> / <strong id="usageLimit">3</strong> 次</span>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+                            <span id="btnText">🤖 生成合同</span>
+                            <span id="btnLoading" class="hidden">⏳ 正在生成...</span>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="result-card hidden" id="resultCard">
+                    <div class="result-header">
+                        <h2>📋 生成的合同</h2>
+                        <div class="result-actions">
+                            <button class="btn btn-small" onclick="copyResult()">📋 复制</button>
+                            <button class="btn btn-small" onclick="downloadResult()">⬇ 下载</button>
+                        </div>
+                    </div>
+                    <div class="result-content" id="resultContent"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 自由职业者工具 - Freelancer Tool. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script>
+        // Load usage on page load
+        fetch('/api/usage')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('usageCount').textContent = d.usage;
+                document.getElementById('usageLimit').textContent = d.limit;
+            });
+
+        document.getElementById('contractForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnLoading = document.getElementById('btnLoading');
+            const resultCard = document.getElementById('resultCard');
+            const resultContent = document.getElementById('resultContent');
+
+            btn.disabled = true;
+            btnText.classList.add('hidden');
+            btnLoading.classList.remove('hidden');
+
+            try {
+                const resp = await fetch('/api/generate-contract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contract_type: document.getElementById('contract_type').value,
+                        party_a: document.getElementById('party_a').value,
+                        party_b: document.getElementById('party_b').value,
+                        terms: document.getElementById('terms').value,
+                    }),
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    if (data.error === 'free_limit_reached') {
+                        showToast('❌ ' + data.message, 'error');
+                    } else {
+                        showToast('❌ 生成失败: ' + (data.detail || '未知错误'), 'error');
+                    }
+                    return;
+                }
+
+                resultContent.textContent = data.content;
+                resultCard.classList.remove('hidden');
+                document.getElementById('usageCount').textContent = data.usage;
+                showToast('✅ 合同生成成功！', 'success');
+            } catch (err) {
+                showToast('❌ 网络错误: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnLoading.classList.add('hidden');
+            }
+        });
+
+        function copyResult() {
+            const text = document.getElementById('resultContent').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('✅ 已复制到剪贴板', 'success');
+            });
+        }
+
+        function downloadResult() {
+            const text = document.getElementById('resultContent').textContent;
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '合同_' + new Date().toISOString().slice(0, 10) + '.txt';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToast('✅ 下载成功', 'success');
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast ' + type;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+    </script>
+</body>
+</html>
